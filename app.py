@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
-from beamframe.beam import *
 from flask_cors import CORS
+from beamframe.beam import *
+import os
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})  # Permitir cualquier origen (aj√∫stalo si es necesario)
@@ -9,53 +10,64 @@ CORS(app, resources={r"/*": {"origins": "*"}})  # Permitir cualquier origen (aj√
 def compute():
     try:
         # Obtener datos del request
-        data = request.json
-        beam_length = data.get('beamLength')
-        point_forces = data.get('pointForces', [])
-        udls = data.get('udls', [])
-        supports = data.get('supports', [])
-        hinges = data.get('hinges', [])
-        moments = data.get('pointMoments', [])
+        body = request.json
+        beam_length = body.get('beamLength')
+        point_forces = body.get('pointForces', [])
+        udls = body.get('udls', [])
+        supports = body.get('supports', [])
+        hinges = body.get('hinges', [])
+        moments = body.get('pointMoments', [])
 
-        # Convertir beam_length a flotante
+        # Validar y convertir la longitud de la viga
         beam_length = float(beam_length)
 
         # Crear la viga
         b = Beam(beam_length)
 
         # Agregar reacciones
-        reactions = [Reaction(s['distance'], s['type'], s['label']) for s in supports]
+        reactions = []
+        for support in supports:
+            reaction = Reaction(support['distance'], support['type'], support['label'])
+            reactions.append(reaction)
 
         # Agregar cargas puntuales
-        loads = [PointLoad(float(pf['distance']), float(pf['magnitude']), inverted=True) for pf in point_forces]
+        loads = []
+        for pf in point_forces:
+            load = PointLoad(float(pf['distance']), float(pf['magnitude']), inverted=True)
+            loads.append(load)
 
         # Agregar momentos
-        loads.extend([PointMoment(float(m['distance']), float(m['magnitude'])) for m in moments])
+        for moment in moments:
+            load = PointMoment(float(moment['distance']), float(moment['magnitude']))
+            loads.append(load)
 
         # Agregar cargas distribuidas
         for udl in udls:
             if udl['magnitudeStart'] == udl['magnitudeEnd']:
-                loads.append(UDL(float(udl['start']), float(udl['magnitudeStart']), float(udl['end']) - float(udl['start'])))
+                udl_load = UDL(float(udl['start']), float(udl['magnitudeStart']), float(udl['end']) - float(udl['start']))
             else:
-                loads.append(UVL(float(udl['start']), float(udl['magnitudeStart']), float(udl['end']) - float(udl['start']), float(udl['magnitudeEnd'])))
+                udl_load = UVL(float(udl['start']), float(udl['magnitudeStart']), float(udl['end']) - float(udl['start']), float(udl['magnitudeEnd']))
+            loads.append(udl_load)
 
         # Agregar bisagras
-        loads.extend([Hinge(float(h['distance']), h['side']) for h in hinges])
+        for hinge in hinges:
+            hinge_load = Hinge(float(hinge['distance']), hinge['side'])
+            loads.append(hinge_load)
 
-        # Resolver la viga
+        # Resolver la viga y generar resultados
         b.fast_solve((*reactions, *loads))
 
-        # Generar resultados
+        # Generar fuerzas cortantes y momentos flectores
         shear_forces = b.generate_shear_values((*reactions, *loads))
         bending_moments = b.generate_moment_values((*reactions, *loads))
 
         return jsonify({
             'status': 'success',
             'data': {
-                'maxshearForces': max(shear_forces),
-                'minshearForces': min(shear_forces),
-                'bendingMoments': max(bending_moments),
-                'minbendingMoments': min(bending_moments),
+                'maxshearForces': max(shear_forces, default=0),
+                'minshearForces': min(shear_forces, default=0),
+                'bendingMoments': max(bending_moments, default=0),
+                'minbendingMoments': min(bending_moments, default=0),
             }
         })
 
@@ -63,4 +75,5 @@ def compute():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    port = int(os.environ.get("PORT", 8080))  # Railway asigna el puerto
+    app.run(host='0.0.0.0', port=port)
