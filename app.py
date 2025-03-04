@@ -10,56 +10,84 @@ CORS(app, resources={r"/*": {"origins": "*"}})  # Permitir cualquier origen (aj√
 def compute():
     try:
         # Obtener datos del request
-        body = request.json
-        beam_length = body.get('beamLength')
-        point_forces = body.get('pointForces', [])
-        udls = body.get('udls', [])
-        supports = body.get('supports', [])
-        hinges = body.get('hinges', [])
-        moments = body.get('pointMoments', [])
+        try:
+            body = request.json
+            beam_length = body.get('beamLength')
+            point_forces = body.get('pointForces', [])
+            udls = body.get('udls', [])
+            supports = body.get('supports', [])
+            hinges = body.get('hinges', [])
+            moments = body.get('pointMoments', [])
+        except Exception as e:
+            return jsonify({'error': f"Error al procesar la solicitud: {str(e)}"}), 400
 
         # Validar y convertir la longitud de la viga
-        beam_length = float(beam_length)
-
-        # Crear la viga
-        b = Beam(beam_length)
+        try:
+            beam_length = float(beam_length)
+            b = Beam(beam_length)
+        except Exception as e:
+            return jsonify({'error': f"Error al inicializar la viga: {str(e)}"}), 400
 
         # Agregar reacciones
         reactions = []
-        for support in supports:
-            reaction = Reaction(support['distance'], support['type'], support['label'])
-            reactions.append(reaction)
+        try:
+            for support in supports:
+                distance = float(support['distance'])
+                support_type = support['type']
+                label = support['label']
+                reaction = Reaction(distance, support_type, label)
+                reactions.append(reaction)
+        except Exception as e:
+            return jsonify({'error': f"Error al procesar soportes: {str(e)}"}), 400
 
         # Agregar cargas puntuales
         loads = []
-        for pf in point_forces:
-            load = PointLoad(float(pf['distance']), float(pf['magnitude']), inverted=True)
-            loads.append(load)
+        try:
+            for pf in point_forces:
+                load = PointLoad(float(pf['distance']), float(pf['magnitude']), inverted=True)
+                loads.append(load)
+        except Exception as e:
+            return jsonify({'error': f"Error al procesar cargas puntuales: {str(e)}"}), 400
 
         # Agregar momentos
-        for moment in moments:
-            load = PointMoment(float(moment['distance']), float(moment['magnitude']))
-            loads.append(load)
+        try:
+            for moment in moments:
+                load = PointMoment(float(moment['distance']), float(moment['magnitude']))
+                loads.append(load)
+        except Exception as e:
+            return jsonify({'error': f"Error al procesar momentos: {str(e)}"}), 400
 
         # Agregar cargas distribuidas
-        for udl in udls:
-            if udl['magnitudeStart'] == udl['magnitudeEnd']:
-                udl_load = UDL(float(udl['start']), float(udl['magnitudeStart']), float(udl['end']) - float(udl['start']))
-            else:
-                udl_load = UVL(float(udl['start']), float(udl['magnitudeStart']), float(udl['end']) - float(udl['start']), float(udl['magnitudeEnd']))
-            loads.append(udl_load)
+        try:
+            for udl in udls:
+                if udl['magnitudeStart'] == udl['magnitudeEnd']:
+                    udl_load = UDL(float(udl['start']), float(udl['magnitudeStart']), float(udl['end']) - float(udl['start']))
+                else:
+                    udl_load = UVL(float(udl['start']), float(udl['magnitudeStart']), float(udl['end']) - float(udl['start']), float(udl['magnitudeEnd']))
+                loads.append(udl_load)
+        except Exception as e:
+            return jsonify({'error': f"Error al procesar cargas distribuidas: {str(e)}"}), 400
 
         # Agregar bisagras
-        for hinge in hinges:
-            hinge_load = Hinge(float(hinge['distance']), hinge['side'])
-            loads.append(hinge_load)
+        try:
+            for hinge in hinges:
+                hinge_load = Hinge(float(hinge['distance']), hinge['side'])
+                loads.append(hinge_load)
+        except Exception as e:
+            return jsonify({'error': f"Error al procesar bisagras: {str(e)}"}), 400
 
         # Resolver la viga y generar resultados
-        b.fast_solve((*reactions, *loads))
+        try:
+            b.fast_solve((*reactions, *loads))
+        except Exception as e:
+            return jsonify({'error': f"Error al resolver la viga: {str(e)}"}), 400
 
         # Generar fuerzas cortantes y momentos flectores
-        shear_forces = b.generate_shear_values((*reactions, *loads))
-        bending_moments = b.generate_moment_values((*reactions, *loads))
+        try:
+            shear_forces = b.generate_shear_values((*reactions, *loads))
+            bending_moments = b.generate_moment_values((*reactions, *loads))
+        except Exception as e:
+            return jsonify({'error': f"Error al generar resultados: {str(e)}"}), 400
 
         return jsonify({
             'status': 'success',
@@ -72,7 +100,7 @@ def compute():
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f"Error inesperado: {str(e)}"}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))  # Railway asigna el puerto
