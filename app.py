@@ -1,7 +1,11 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from beamframe.beam import *
+import io
 import os
+import matplotlib
+matplotlib.use('Agg')  # Usar el backend Agg de matplotlib
+import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})  # Permitir cualquier origen (ajústalo si es necesario)
@@ -23,7 +27,7 @@ def compute():
 
         # Validar y convertir la longitud de la viga
         try:
-            beam_length = float(beam_length)
+            beam_length = (beam_length)
             b = Beam(beam_length)
         except Exception as e:
             return jsonify({'error': f"Error al inicializar la viga: {str(e)}"}), 400
@@ -79,6 +83,7 @@ def compute():
         # Resolver la viga y generar resultados
         try:
             b.fast_solve((*reactions, *loads))
+
         except Exception as e:
             return jsonify({'error': f"Error al resolver la viga: {str(e)}"}), 400
 
@@ -86,16 +91,38 @@ def compute():
         try:
             shear_forces = b.generate_shear_values((*reactions, *loads))
             bending_moments = b.generate_moment_values((*reactions, *loads))
+            max_shear = max(shear_forces, default=0)
+            min_shear = min(shear_forces, default=0)
+            max_moment = max(bending_moments, default=0)
+            min_moment = min(bending_moments, default=0)
+            
         except Exception as e:
             return jsonify({'error': f"Error al generar resultados: {str(e)}"}), 400
+
+        # Generar la gráfica en memoria (sin guardarla en disco)
+        try:
+            img_io = io.BytesIO()
+            b.generate_graph(which='both', details = True, save_fig=False, show_graph=False)
+        except Exception as e:
+            return jsonify({'error': f"Error al generar la gráfica desde beamframe: {str(e)}"}), 400
+        try:
+            plt.savefig(img_io, format='png')  # Guardar la imagen en el buffer
+            img_io.seek(0)  # Volver al inicio del buffer para enviarlo
+        except Exception as e:
+            return jsonify({'error': f"Error al guardar la imagen: {str(e)}"}), 400
+
+        # Convertir la imagen a base64 para enviarla en la respuesta JSON
+        import base64
+        img_base64 = base64.b64encode(img_io.getvalue()).decode('utf-8')
 
         return jsonify({
             'status': 'success',
             'data': {
-                'maxshearForces': max(shear_forces, default=0),
-                'minshearForces': min(shear_forces, default=0),
-                'bendingMoments': max(bending_moments, default=0),
-                'minbendingMoments': min(bending_moments, default=0),
+                'maxShearForce': max_shear,
+                'minShearForces': min_shear,
+                'maxBendingMoment': max_moment,
+                'minBendingMoment': min_moment,
+                'graph': img_base64  # Añadir las reacciones en y a la respuesta
             }
         })
 
