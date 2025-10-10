@@ -48,7 +48,7 @@ def compute():
         loads = []
         try:
             for pf in point_forces:
-                load = PointLoad(float(pf['distance']), float(pf['magnitude']), inverted=True)
+                load = PointLoad(float(pf['distance']), float(pf['magnitude']))
                 loads.append(load)
         except Exception as e:
             return jsonify({'error': f"Error al procesar cargas puntuales: {str(e)}"}), 400
