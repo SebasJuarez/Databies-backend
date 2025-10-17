@@ -96,6 +96,11 @@ def compute():
             max_moment = max(bending_moments, default=0)
             min_moment = min(bending_moments, default=0)
             
+            # Obtener valores de las reacciones
+            reaction_values = {}
+            for reaction in reactions:
+                reaction_values[reaction.label] = reaction.value
+            
         except Exception as e:
             return jsonify({'error': f"Error al generar resultados: {str(e)}"}), 400
 
@@ -122,6 +127,7 @@ def compute():
                 'minShearForces': min_shear,
                 'maxBendingMoment': max_moment,
                 'minBendingMoment': min_moment,
+                'reactions': reaction_values,  # Añadir las reacciones (Ra, Rb, etc.)
                 'graph': img_base64  # Añadir las reacciones en y a la respuesta
             }
         })
