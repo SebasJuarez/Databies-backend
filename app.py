@@ -31,16 +31,30 @@ def compute():
             b = Beam(beam_length)
         except Exception as e:
             return jsonify({'error': f"Error al inicializar la viga: {str(e)}"}), 400
+        
+        def _normalize_support_type(t: str) -> str:
+            t = (t or "").strip().lower()
+            if t in ("pin", "pasador", "hinge", "h"):
+                return "hinge"
+            if t in ("roller", "rodillo", "r"):
+                return "roller"
+            if t in ("fixed", "empotramiento", "f"):
+                return "fixed"
+            raise ValueError(f"Tipo de apoyo no válido: {t}")
 
         # Agregar reacciones
         reactions = []
         try:
-            for support in supports:
-                distance = float(support['distance'])
-                support_type = support['type']
-                label = support['label']
-                reaction = Reaction(distance, support_type, label)
-                reactions.append(reaction)
+            for s in supports:
+                distance = float(s["distance"])
+                stype    = _normalize_support_type(s.get("type"))
+                label_in = (s.get("label") or "").strip()
+
+                r = Reaction(distance, stype, label_in or None)
+                # Crea un alias seguro para UI:
+                setattr(r, "ui_label",
+                        label_in or getattr(r, "pos_sym", None) or f"@{getattr(r, 'pos', distance)}")
+                reactions.append(r)
         except Exception as e:
             return jsonify({'error': f"Error al procesar soportes: {str(e)}"}), 400
 
@@ -82,7 +96,8 @@ def compute():
 
         # Resolver la viga y generar resultados
         try:
-            b.fast_solve((*reactions, *loads))
+            lds = tuple(reactions) + tuple(loads)
+            b.fast_solve(lds)
 
         except Exception as e:
             return jsonify({'error': f"Error al resolver la viga: {str(e)}"}), 400
@@ -96,10 +111,29 @@ def compute():
             max_moment = max(bending_moments, default=0)
             min_moment = min(bending_moments, default=0)
             
-            # Obtener valores de las reacciones
             reaction_values = {}
-            for reaction in reactions:
-                reaction_values[reaction.label] = reaction.value
+
+            def display_label(r):
+                # usa label si viene, si no pos_sym, si no @x
+                return r.label or getattr(r, "pos_sym", None) or f"@{getattr(r, 'pos', None)}"
+
+            for r in reactions:
+                comps = {}
+                # BeamFrame guarda rx_val, ry_val, mom_val tras fast_solve
+                rx = getattr(r, "rx_val", None)
+                ry = getattr(r, "ry_val", None)
+                mm = getattr(r, "mom_val", None)
+
+                # En la UI: queremos "arriba=+" → invertimos SOLO el eje Y para mostrar
+                if ry is not None:
+                    comps["Ry"] = -float(ry)   # -(-5) = +5 (kN, por ejemplo)
+                if rx is not None:
+                    comps["Rx"] = float(rx)    # normalmente ya coherente
+                if mm is not None:
+                    comps["M"]  = float(mm)    # CCW positivo (déjalo como está)
+
+                key = getattr(r, "ui_label", None) or getattr(r, "pos_sym", None) or f"@{getattr(r, 'pos', None)}"
+                reaction_values[key] = comps
             
         except Exception as e:
             return jsonify({'error': f"Error al generar resultados: {str(e)}"}), 400
