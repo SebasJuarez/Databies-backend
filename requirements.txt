@@ -1,5 +1,5 @@
-Flask
-flask-cors
-beamframe
-gunicorn
-matplotlib
+Flask>=3.0
+flask-cors>=4.0
+gunicorn>=22.0
+# Structo, la librería de vigas del equipo (https://pypi.org/project/databies/)
+databies>=0.1.0,<0.2
